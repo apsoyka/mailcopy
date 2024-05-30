@@ -1,47 +1,29 @@
-use std::{fs::File, path::Path};
+use std::{io::{Read, Write}, path::Path};
 
-use imap::types::Fetch;
+use chrono::{Local, TimeDelta};
+use imap::{types::Fetch, Session};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
-use log::{debug, warn};
+use lazy_static::lazy_static;
+use log::{debug, info, warn};
 use sha2::{Digest, Sha256};
 use tar::{Builder, Header};
-use zstd::stream::AutoFinishEncoder;
 
 type IntegerResult = Result<u64, Box<dyn std::error::Error + Send + Sync>>;
+type TupleResult = Result<(u64, TimeDelta), Box<dyn std::error::Error + Send + Sync>>;
 
-pub struct WriteTask<'a> {
-    messages: &'a Vec<Fetch>,
-    name: &'a str,
-    multi_progress: &'a MultiProgress,
-    style: &'a ProgressStyle,
-    builder: &'a mut Builder<AutoFinishEncoder<'static, File>>
+const PROGRESS_STYLE_TEMPLATE: &str = "[{elapsed_precise}] {wide_bar:.cyan/blue} {pos}/{len} {msg}";
+
+lazy_static! {
+    static ref PROGRESS_STYLE: ProgressStyle = ProgressStyle::with_template(PROGRESS_STYLE_TEMPLATE)
+        .unwrap()
+        .progress_chars("#>-");
 }
 
-impl<'a> WriteTask<'a> {
-    pub fn new(
-        messages: &'a Vec<Fetch>,
-        name: &'a str,
-        multi_progress: &'a MultiProgress,
-        style: &'a  ProgressStyle,
-        builder: &'a mut Builder<AutoFinishEncoder<'static, File>>
-    ) -> WriteTask<'a> {
-        Self {
-            messages,
-            name,
-            multi_progress,
-            style,
-            builder
-        }
-    }
-}
-
-pub fn write_messages(task: WriteTask) -> IntegerResult {
-    let WriteTask { messages, name, multi_progress, style, builder } = task;
-
+fn write_messages<W: Write>(messages: & Vec<Fetch>, name: & str, multi_progress: & MultiProgress, builder: & mut Builder<W>) -> IntegerResult {
     let count = messages.len() as u64;
     let progress = multi_progress.add(ProgressBar::new(count));
 
-    progress.set_style(style.clone());
+    progress.set_style(PROGRESS_STYLE.clone());
 
     let mut total: u64 = 0;
 
@@ -85,4 +67,45 @@ pub fn write_messages(task: WriteTask) -> IntegerResult {
     multi_progress.remove(&progress);
 
     Ok(total)
+}
+
+pub fn fetch_messages<T: Write + Read, W: Write>(session: &mut Session<T>, multi_progress: MultiProgress, builder: &mut Builder<W>) -> TupleResult {
+    let start = Local::now();
+    let messages = session.list(Some(""), Some("*"))?;
+    let count = messages.len() as u64;
+    let progress = multi_progress.add(ProgressBar::new(count));
+
+    progress.set_style(PROGRESS_STYLE.clone());
+
+    let mut total: u64 = 0;
+
+    for name in &messages {
+        let index = progress.position() + 1;
+        let name = name.name();
+
+        progress.set_message(format!("{name} [{}]", HumanBytes(total)));
+
+        session.examine(name)?;
+
+        match session.fetch("1:*", "RFC822") {
+            Ok(messages) => {
+                let size = write_messages(&messages, name, &multi_progress, builder)?;
+
+                total += size;
+
+                info!("{index}/{count} -> {name} [{}]", HumanBytes(size));
+            },
+            Err(error) => warn!("{index}/{count} -> Skipping {name}: {error}")
+        }
+
+        progress.inc(1);
+    }
+
+    let end = Local::now();
+    let elapsed = end - start;
+
+    progress.finish_and_clear();
+    multi_progress.remove(&progress);
+
+    Ok((total, elapsed))
 }

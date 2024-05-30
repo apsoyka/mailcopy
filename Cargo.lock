@@ -734,6 +734,7 @@ dependencies = [
  "imap",
  "indicatif",
  "indicatif-log-bridge",
+ "lazy_static",
  "log",
  "native-tls",
  "sha2",
