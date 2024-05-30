@@ -79,7 +79,10 @@ fn main() -> UnitResult {
         debug!("Failed to load credentials from dotfile");
     }
 
-    let tls = TlsConnector::builder().danger_accept_invalid_certs(arguments.authentication.insecure).build()?;
+    let tls = TlsConnector::builder()
+        .danger_accept_invalid_certs(arguments.authentication.insecure)
+        .build()?;
+
     let address = (arguments.hostname.as_str(), arguments.port);
     let client = imap::connect_starttls(address, &arguments.hostname, &tls)?;
 
@@ -95,13 +98,16 @@ fn main() -> UnitResult {
     let mut session = client.login(username.unwrap(), password.unwrap()).map_err(|error| error.0)?;
 
     let path = Path::new(&arguments.output);
-    let file = File::options().create(true).write(true).truncate(true).open(path)?;
+    let file = File::options()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(path)?;
 
     let mut writer = ZipWriter::new(file);
 
     let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Zstd)
-        .compression_level(Some(3))
+        .compression_method(CompressionMethod::Deflated)
         .unix_permissions(0o755);
 
     for name in &session.list(Some(""), Some("*"))? {
