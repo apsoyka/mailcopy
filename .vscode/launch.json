@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Executable",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=mailcopy",
+                    "--package=mailcopy"
+                ],
+                "filter": {
+                    "name": "mailcopy",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Unit Tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=mailcopy",
+                    "--package=mailcopy"
+                ],
+                "filter": {
+                    "name": "mailcopy",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
