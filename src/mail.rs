@@ -1,10 +1,11 @@
-use std::{fs::File, io::Write, path::Path};
+use std::{fs::File, path::Path};
 
 use imap::types::Fetch;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, warn};
 use sha2::{Digest, Sha256};
-use zip::{write::SimpleFileOptions, ZipWriter};
+use tar::{Builder, Header};
+use zstd::stream::AutoFinishEncoder;
 
 type IntegerResult = Result<u64, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -13,8 +14,7 @@ pub struct WriteTask<'a> {
     name: &'a str,
     multi_progress: &'a MultiProgress,
     style: &'a ProgressStyle,
-    writer: &'a mut ZipWriter<File>,
-    options: SimpleFileOptions
+    builder: &'a mut Builder<AutoFinishEncoder<'static, File>>
 }
 
 impl<'a> WriteTask<'a> {
@@ -23,28 +23,25 @@ impl<'a> WriteTask<'a> {
         name: &'a str,
         multi_progress: &'a MultiProgress,
         style: &'a  ProgressStyle,
-        writer: &'a mut ZipWriter<File>,
-        options: SimpleFileOptions
+        builder: &'a mut Builder<AutoFinishEncoder<'static, File>>
     ) -> WriteTask<'a> {
         Self {
             messages,
             name,
             multi_progress,
             style,
-            writer,
-            options
+            builder
         }
     }
 }
 
 pub fn write_messages(task: WriteTask) -> IntegerResult {
-    let WriteTask { messages, name, multi_progress, style, writer, options } = task;
+    let WriteTask { messages, name, multi_progress, style, builder } = task;
 
     let count = messages.len() as u64;
     let progress = multi_progress.add(ProgressBar::new(count));
 
     progress.set_style(style.clone());
-    writer.add_directory(name, options)?;
 
     let mut total: u64 = 0;
 
@@ -59,15 +56,20 @@ pub fn write_messages(task: WriteTask) -> IntegerResult {
             let result = digest.finalize();
             let hex = hex::encode(&result);
             let filename = format!("{hex}.eml");
-            let path = Path::new(name).join(filename);
+            let path = &Path::new(name).join(filename);
             let size = body.len() as u64;
 
-            writer.start_file_from_path(&path, options)?;
-            writer.write_all(body)?;
+            let mut header = Header::new_gnu();
+
+            header.set_size(size);
+            header.set_cksum();
+            header.set_mode(0o755);
+
+            builder.append_data(&mut header, path, body)?;
 
             total += size;
 
-            debug!("{index}/{count} -> {path:?} [{}]", HumanBytes(size));
+            debug!("{index}/{count} -> {:?} [{}]", path, HumanBytes(size));
 
             // Show the current mailbox name and total amount of data fetched.
             progress.set_message(format!("{name} [{}]", HumanBytes(total)));

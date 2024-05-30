@@ -12,7 +12,6 @@ use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use indicatif_log_bridge::LogWrapper;
 use log::{debug, error, info, warn};
 use native_tls::TlsConnector;
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 type UnitResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 type MultiProgressResult = Result<MultiProgress, Box<dyn std::error::Error + Send + Sync>>;
@@ -95,12 +94,8 @@ fn main() -> UnitResult {
         .truncate(true)
         .open(path)?;
 
-    let mut writer = ZipWriter::new(file);
-
-    let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Zstd)
-        .compression_level(Some(3))
-        .unix_permissions(0o755);
+    let encoder = zstd::Encoder::new(file, 3)?.auto_finish();
+    let mut builder = tar::Builder::new(encoder);
 
     let messages = session.list(Some(""), Some("*"))?;
     let count = messages.len() as u64;
@@ -121,7 +116,7 @@ fn main() -> UnitResult {
 
         match session.fetch("1:*", "RFC822") {
             Ok(messages) => {
-                let task = WriteTask::new(&messages, name, &multi_progress, &style, &mut writer, options);
+                let task = WriteTask::new(&messages, name, &multi_progress, &style, &mut builder);
                 let size = write_messages(task)?;
 
                 total += size;
@@ -142,7 +137,7 @@ fn main() -> UnitResult {
 
     progress.finish_and_clear();
     multi_progress.remove(&progress);
-    writer.finish()?;
+    builder.finish()?;
 
     Ok(())
 }
