@@ -4,8 +4,7 @@ use clap::{Args, Parser};
 use log::LevelFilter;
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None, arg_required_else_help = false)]
-#[command(propagate_version = true)]
+#[command(author, version, about, long_about = None, arg_required_else_help = true, propagate_version = true)]
 pub struct Arguments {
     #[command(flatten)]
     pub verbosity: Verbosity,
@@ -46,7 +45,10 @@ pub struct Authentication {
     pub password: Option<String>,
 
     #[arg(short = 'i', long = "insecure", help = "Accept invalid TLS certificates")]
-    pub insecure: bool
+    pub insecure: bool,
+
+    #[arg(short = 't', long = "starttls", help = "Use STARTTLS to connect")]
+    pub starttls: bool
 }
 
 impl Verbosity {

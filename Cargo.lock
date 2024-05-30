@@ -712,8 +712,9 @@ dependencies = [
 
 [[package]]
 name = "mailcopy"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
+ "chrono",
  "clap",
  "dotenv",
  "env_logger",
